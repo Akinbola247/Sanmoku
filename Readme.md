@@ -6,3 +6,7 @@ Sanmoku Dojo stands as a pioneering fully on-chain board game hub powered by the
 
 
 https://sanmoku-dojo.vercel.app/
+
+## todo
+Mobile responsiveness
+Onboard more board games
