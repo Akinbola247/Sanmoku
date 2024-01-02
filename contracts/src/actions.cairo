@@ -1,23 +1,24 @@
-use sanmoku::models::{Moves, Board, Game, Square};
+use sanmoku::models::{Moves, Board, Game, Square, Players};
 use starknet::{ContractAddress};
 
 // define the interface
 #[starknet::interface]
-trait IActions<TContractState> {
+trait IActions<TState> {
     fn initiate_game(
-        self: @TContractState, player_one: ContractAddress, player_two: ContractAddress
+        ref self: TState, player_one: ContractAddress, player_two: ContractAddress
     ) -> felt252;
-    fn spawn(self: @TContractState, avatar: felt252, game_id: felt252, player: ContractAddress);
-    fn play_game(self: @TContractState, game_id: felt252, square: Square) -> felt252;
-    fn restart_game(self: @TContractState, game_id: felt252, player1 :ContractAddress, player2: ContractAddress);
-    fn init(self: @TContractState, token_address: ContractAddress);
-    fn register_player(self: @TContractState, name_: felt252);
+    fn spawn(ref self: TState, avatar: felt252, game_id: felt252, player: ContractAddress);
+    fn play_game(ref self: TState, game_id: felt252, square: Square,player : ContractAddress) -> felt252;
+    fn restart_game(ref self: TState, game_id: felt252, player1 :ContractAddress, player2: ContractAddress);
+    fn init(ref self: TState, token_address: ContractAddress);
+    fn register_player(ref self: TState, name_: felt252,player : ContractAddress);
+    fn playerstatus(self : @TState, player : ContractAddress) -> Players;
 }
 
 
 #[dojo::contract]
 mod actions {
-    use sanmoku::models::{Moves, Board, Game, Square, Winning_tuple, Gate,Players,Players_tuple,Fixed};
+    use sanmoku::models::{Moves, Board, Game, Square, Winning_tuple, Gate,Players,Players_tuple,Fixed,Response};
     use sanmoku::erc20_dojo::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use traits::TryInto;
     use option::OptionTrait;
@@ -55,7 +56,7 @@ mod actions {
     #[external(v0)]
     impl ActionsImpl of IActions<ContractState> {
         fn initiate_game(
-            self: @ContractState, player_one: ContractAddress, player_two: ContractAddress
+            ref self: ContractState, player_one: ContractAddress, player_two: ContractAddress
         ) -> felt252 {
             let world = self.world_dispatcher.read();
             let key = starknet::contract_address_const::<0x0123>();
@@ -75,7 +76,7 @@ mod actions {
             );
             game_id
         }
-        fn spawn(self: @ContractState, avatar: felt252, game_id: felt252, player: ContractAddress) {
+        fn spawn(ref self: ContractState, avatar: felt252, game_id: felt252, player: ContractAddress) {
             let world = self.world_dispatcher.read();
             let (mut board_state, mut game) = get!(world, game_id, (Board, Game));
             let mut moves = get!(world, player, (Moves));
@@ -117,11 +118,10 @@ mod actions {
             return ();
         }
 
-        fn play_game(self: @ContractState, game_id: felt252, square: Square) -> felt252 {
+        fn play_game(ref self: ContractState, game_id: felt252, square: Square, player : ContractAddress) -> felt252 {
             let world = self.world_dispatcher.read();
-            let player = get_caller_address();
             // obtain current board state
-            let (mut board_state, mut game,) = get!(world, game_id, (Board, Game));
+            let (mut board_state, mut game, mut gameresponse) = get!(world, game_id, (Board, Game, Response)); 
             let mut moves = get!(world, player, (Moves));
             let mut opponent_move = get!(world, moves.opponent, (Moves));
             // check player 
@@ -142,26 +142,26 @@ mod actions {
             let mut response : felt252 = ''.into();
             if result == 1 && moves.avatar_choice == 'X' {
                 token_dispatcher.mint_(moves.player, 200);
-                response = 'PLAYER X WINS'.into();
+                gameresponse.gameresponse = 'PLAYER X WINS'.into();
             } else if result == 1 && moves.avatar_choice == 'O' {
                 token_dispatcher.mint_(moves.player, 200);
-                response = 'PLAYER O WINS'.into();
+                gameresponse.gameresponse = 'PLAYER O WINS'.into();
             } else if result == 2 {
-               response = 'DRAW'.into();
+               gameresponse.gameresponse = 'DRAW'.into();
             }
-
+             
             //update/set board state here
-            set!(world, (current_move_state, played_move_board_state, opponent_move));
+            set!(world, (current_move_state, played_move_board_state, opponent_move,gameresponse));
             emit!(
                 world,
                 Result {
                     result : response
                 }
             );
-           response
+           gameresponse.gameresponse
         }
 
-        fn init(self: @ContractState, token_address: ContractAddress){
+        fn init(ref self: ContractState, token_address: ContractAddress){
             let world = self.world_dispatcher.read();
             let key = starknet::contract_address_const::<0x01>();
             let mut helper = get!(world, (key), Gate);
@@ -171,9 +171,15 @@ mod actions {
             set!(world, (helper));
         }
 
-        fn restart_game(self: @ContractState, game_id: felt252, player1 :ContractAddress, player2: ContractAddress) {
+        fn playerstatus(self: @ContractState, player : ContractAddress) -> Players{
             let world = self.world_dispatcher.read();
-            let (mut board_state, mut game) = get!(world, game_id, (Board, Game));
+            let mut player = get!(world,player,(Players));
+            player
+        }
+
+        fn restart_game(ref self: ContractState, game_id: felt252, player1 :ContractAddress, player2: ContractAddress) {
+            let world = self.world_dispatcher.read();
+            let (mut board_state, mut game, mut gameresponses) = get!(world, game_id, (Board, Game,Response));
             let mut moves = get!(world, player1, (Moves));
             let mut moves2 = get!(world, player2, (Moves));
             assert(game_id == game.game_id, 'wrong_ID');
@@ -208,18 +214,19 @@ mod actions {
                 board_state.c_2 = '';
                 board_state.c_3 = '';
                 //set default state 
-                set!(world, (moves, board_state, game));
+                gameresponses.gameresponse = 'restarted';
+                set!(world, (moves, board_state, game,gameresponses));
                 set!(world, (moves2, board_state, game));
         }
-        fn register_player(self: @ContractState, name_: felt252){
+        fn register_player(ref self: ContractState, name_: felt252, player : ContractAddress){
             let world = self.world_dispatcher.read();
-            let mut details = get!(world, get_caller_address(), (Players));  
+            let mut details = get!(world, player, (Players));  
             details.name_ = name_;      
             set!(world, (details));
             emit!(
                 world,
                 Reg {
-                    playeraddress : get_caller_address(),
+                    playeraddress : player,
                     name__: name_
                 }
             );

@@ -7,7 +7,11 @@ import { getEntityIdFromKeys } from "@dojoengine/utils";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import Tictactoe from "./pages/Tictactoe";
+import Launch from "./pages/Launch";
 import './index.css';
+import Gamepage from "./pages/Game/[id]";
+import { ChakraProvider } from '@chakra-ui/react'
+import AppProvider from "./context/Appcontext";
 
 
 
@@ -74,12 +78,18 @@ function App() {
   return (
     <>
       <div>
+      <ChakraProvider>
+        <AppProvider>
       <BrowserRouter>
               <Routes>
                 <Route path="/tictactoe" element={<Tictactoe />} />
+                <Route path="/app" element={<Launch />} />
                 <Route path="/" element={<Home />} />
+                <Route path="/Game/:id" element={<Gamepage />} />
               </Routes>
             </BrowserRouter>
+        </AppProvider>
+      </ChakraProvider>
       </div>
     </>
   );
